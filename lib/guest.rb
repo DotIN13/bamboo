@@ -38,8 +38,7 @@ class BambooSocket
     # Listen for new frames
     def listen
       loop do
-        p :listening
-        # ready = IO.select([socket], nil, nil, @opts[:max_timeout])
+        logger.debug 'Listening for new frames.'
         ready = socket.wait 5
         raise SocketTimeout, "No incomming messages in #{@opts[:max_timeout]} seconds, socket dead" if ready.nil?
 

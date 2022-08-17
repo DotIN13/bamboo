@@ -16,7 +16,6 @@ class BambooSocket
     def initialize(guest_opts = {})
       trap_int
       @scheduler = BambooSocket::Scheduler
-      Fiber.set_scheduler(@scheduler.new)
       @guest_opts = { max_timeout: 60 }.merge(guest_opts)
       @tcp_server = TCPServer.new 5613
       @callbacks = {}
@@ -67,7 +66,7 @@ class BambooSocket
         Fiber.set_scheduler(@scheduler.new)
         Fiber.schedule do
           loop do
-            p :waiting
+            logger.debug 'Waiting for new guests.'
             guest = @waiting_list.shift
 
             new_guest(guest)

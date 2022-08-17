@@ -16,9 +16,8 @@ class BambooSocket
 
     # Initialize message queue and perform a handshake
     def initialize(socket, callbacks, opts)
-      self.frame_queue = []
       self.socket = socket
-      BambooSocket::Handshake.new(socket)
+      self.frame_queue = []
       init_buffer
       @callbacks = callbacks
       @opts = opts
@@ -28,11 +27,8 @@ class BambooSocket
     # Queue the message that is sent to this guest
     # TODO: There should be another Fiber handling the queue unloading
     def send_message(payload = '', type: :text)
-      frames = []
-      frames << BambooFrame::Outgoing.new(payload:, opcode: BambooSocket::OPCODES[type])
-      # TODO: if the message size is too large, split and queue
-      frame_queue << frames
-      unload_queue unless @unloading
+      frame_queue << contruct_outgoing_frames(payload, type)
+      Fiber.schedule { unload_queue unless @unloading }
     end
 
     # Listen for new frames
@@ -40,7 +36,7 @@ class BambooSocket
       loop do
         logger.debug 'Listening for new frames.'
         ready = socket.wait 5
-        raise SocketTimeout, "No incomming messages in #{@opts[:max_timeout]} seconds, socket dead" if ready.nil?
+        raise SocketTimeout, "No incomming messages in #{@opts[:max_timeout]} seconds, socket dead" unless ready
 
         incomming = BambooFrame::Incomming.new(socket).receive
         @callbacks[:frame]&.call(self, incomming, type: incomming.type)
@@ -72,15 +68,15 @@ class BambooSocket
       send_message(type: :pong)
     end
 
-    ################# Close #################
+    #################### Close ####################
 
     def signal_close
-      logger.warn { 'Closing socket with closing frame' }
+      logger.warn { 'Closing socket with a close frame' }
       PandaFrame::Outgoing.new(opcode: 0x08).send_frame(socket)
     rescue Errno::EPIPE
-      logger.warn { 'Broken pipe, no closing frames sent' }
+      logger.warn { 'Broken pipe, no close frames sent' }
     rescue IOError
-      logger.warn { 'Closed stream, no closing frames sent' }
+      logger.warn { 'Socket already closed, no close frames sent' }
     ensure
       raise SocketClosed
     end
@@ -100,11 +96,32 @@ class BambooSocket
       @unloading = false
     end
 
-    ################## Buffer #####################
+    #################### Buffer ######################
 
     def init_buffer
       @buffer = []
       @buffer_size = 0
+    end
+
+    ############# Outgoing messages ##################
+
+    # Split large payload into continuation frames
+    def contruct_outgoing_frames(payload, type)
+      size = payload.size
+      opcode = BambooSocket::OPCODES[type]
+      step = BambooSocket::MAX_FRAME_SIZE
+      return [BambooFrame::Outgoing.new(payload:, opcode:)] if size <= step
+
+      frames = []
+      index = 0
+      while index - 1 <= size
+        next_index = index + step - 1
+        opcode = 0x00 if index.positive?
+        fin = next_index >= size ? 0x01 : 0x00
+        frames << BambooFrame::Outgoing.new(payload: payload[index..next_index], opcode:, fin:)
+        index = next_index + 1
+      end
+      frames
     end
   end
 end

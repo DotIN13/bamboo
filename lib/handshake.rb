@@ -13,10 +13,20 @@ class BambooSocket
 
     def initialize(socket)
       self.socket = socket
+    end
+
+    def shake
       self.request = BambooSocket::Headers.new
       read_http_request
       respond
+      true
+    rescue HandshakeError
+      logger.warn 'Handshake failed, closing socket'
+      socket.close
+      false
     end
+
+    private
 
     # WIP: should send 400 error if bad http request
     def read_http_request
@@ -28,8 +38,6 @@ class BambooSocket
       raise HandshakeError, 'Invalid HTTP request type' unless valid_type?
       raise HandshakeError, 'Invalid WebSocket request' unless valid_headers?
     end
-
-    private
 
     # Read and validate first line of HTTP request
     def read_first_line
@@ -66,7 +74,7 @@ class BambooSocket
       # Only test origin in production mode
       valid << (BambooSocket::ORIGINS.include? request[:origin]) if production?
       valid << (request[:upgrade] == 'websocket')
-      valid << (request[:connection] == 'Upgrade')
+      valid << (request[:connection].include? 'Upgrade')
       valid << (request[:'sec-websocket-version'] == '13')
       valid.all? true
     end
@@ -75,7 +83,7 @@ class BambooSocket
     def on_socket_readable(timeout = 3)
       # ready = IO.select([socket], nil, nil, timeout)
       ready = socket.wait timeout
-      raise SocketTimeout, 'Socket read timeout' if ready.nil?
+      raise HandshakeError, 'Socket read timeout during handshake' unless ready
 
       socket
     end

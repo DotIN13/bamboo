@@ -13,6 +13,7 @@ class BambooSocket
     continuation: 0x00
   }.freeze
   MAX_BUFFER_SIZE = 1_000_000
+  MAX_FRAME_SIZE = 131_000 # The maximum frame size to be sent to a guest
   Headers = Struct.new('Headers', :http_method, :http_version, :origin, :upgrade, :connection,
                        :"sec-websocket-key", :"sec-websocket-version")
 end

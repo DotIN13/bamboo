@@ -38,12 +38,12 @@ class BambooSocket
       init_greeter
       init_worker
       # [greeter, worker].each(&:join)
-      greeter.join
+      [greeter, worker].each(&:join)
     end
 
     private
 
-    # Initialize the greeter thread
+    ############ Initialize the greeter thread #############
     # The greeter takes care of the handshakes with the clients
     def init_greeter
       self.greeter = Thread.new do
@@ -51,14 +51,18 @@ class BambooSocket
         Fiber.schedule do
           loop do
             socket = @tcp_server.accept
-
-            Fiber.schedule { @waiting_list << BambooSocket::Guest.new(socket, @callbacks, @guest_opts) }
+            Fiber.schedule { handshake(socket) }
           end
         end
       end
     end
 
-    # Initialize the worker thread
+    def handshake(socket)
+      success = BambooSocket::Handshake.new(socket).shake
+      @waiting_list << BambooSocket::Guest.new(socket, @callbacks, @guest_opts) if success
+    end
+
+    ############# Initialize the worker thread #############
     # It is quite interesting that callbacks defined with Server::on are also run by this thread
     # TODO: Create a few worker threads, and take guests from the waiting list based on their index
     def init_worker

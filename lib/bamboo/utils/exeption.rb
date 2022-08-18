@@ -18,16 +18,10 @@ end
 class HandshakeError < BambooSocketError
 end
 
+# Socket timeout
 class SocketTimeout < BambooSocketError
 end
 
-class TalkRoomError < BambooSocketError
-end
-
-class RoomFullError < TalkRoomError
-end
-
 # Socket close
-
 class SocketClosed < StandardError
 end

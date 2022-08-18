@@ -3,7 +3,7 @@
 require_relative 'handshake'
 require_relative 'utils/logging'
 require_relative 'utils/constants'
-require_relative 'bamboo_frame/bamboo_frame'
+require_relative 'frames/frames'
 
 class BambooSocket
   # Websocket guest.
@@ -18,16 +18,16 @@ class BambooSocket
     def initialize(socket, callbacks, opts)
       self.socket = socket
       self.frame_queue = []
-      init_buffer
       @callbacks = callbacks
       @opts = opts
       @unloading = false
+      @callbacks[:add]&.call(self)
+      init_buffer
     end
 
     # Queue the message that is sent to this guest
-    # TODO: There should be another Fiber handling the queue unloading
     def send_message(payload = '', type: :text)
-      frame_queue << contruct_outgoing_frames(payload, type)
+      frame_queue << outgoing_frames(payload, type)
       Fiber.schedule { unload_queue unless @unloading }
     end
 
@@ -45,6 +45,7 @@ class BambooSocket
         handle incomming
       end
     rescue SocketClosed
+      @callbacks[:remove]&.call(self)
       socket.close
     end
 
@@ -55,13 +56,7 @@ class BambooSocket
     def handle(incomming)
       pong if incomming.ping?
       signal_close if incomming.close?
-
-      @buffer_size += incomming.payload_size
-      @buffer << incomming if @buffer_size <= BambooSocket::MAX_BUFFER_SIZE
-      return unless incomming.fin? # Always run message callback when a fin frame is reached
-
-      @callbacks[:message]&.call(self, @buffer.map(&:payload).join, type: incomming.type)
-      init_buffer
+      append_to_buffer(incomming)
     end
 
     def pong
@@ -103,15 +98,29 @@ class BambooSocket
       @buffer_size = 0
     end
 
+    def append_to_buffer(incomming)
+      @buffer_size += incomming.payload_size
+      @buffer << incomming if @buffer_size <= BambooSocket::MAX_BUFFER_SIZE
+      return unless incomming.fin? # Always run message callback when a fin frame is reached
+
+      @callbacks[:message]&.call(self, @buffer.map(&:payload).join, @buffer.first.type)
+      init_buffer
+    end
+
     ############# Outgoing messages ##################
 
     # Split large payload into continuation frames
-    def contruct_outgoing_frames(payload, type)
+    def outgoing_frames(payload, type)
       size = payload.size
       opcode = BambooSocket::OPCODES[type]
       step = BambooSocket::MAX_FRAME_SIZE
       return [BambooFrame::Outgoing.new(payload:, opcode:)] if size <= step
 
+      # Construct continuation frames if payload size is larger than MAX_FRAME_SIZE
+      continuation_frames(payload, opcode, size, step)
+    end
+
+    def continuation_frames(payload, opcode, size, step)
       frames = []
       index = 0
       while index - 1 <= size

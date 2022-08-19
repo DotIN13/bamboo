@@ -6,8 +6,8 @@ require_relative 'logging'
 class BambooSocketError < StandardError
   include BambooSocket::Logging
 
-  def initialize(msg)
-    logger.error msg.to_s
+  def initialize(msg = nil)
+    logger.error msg.to_s if msg
     super msg
   end
 end
@@ -23,5 +23,5 @@ class SocketTimeout < BambooSocketError
 end
 
 # Socket close
-class SocketClosed < StandardError
+class SocketClosed < BambooSocketError
 end

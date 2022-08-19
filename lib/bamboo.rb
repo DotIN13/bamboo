@@ -11,7 +11,7 @@ class BambooSocket
   # Websocket server
   class Server
     include BambooSocket::Logging
-    attr_accessor :greeter, :workers
+    attr_accessor :greeter, :workers, :guest_list
 
     def initialize(guest_opts = {}, workers: 4)
       trap_int
@@ -22,6 +22,7 @@ class BambooSocket
       @callbacks = {}
       @current_id = 0
       @waiting_list = Thread::Queue.new
+      @guest_list = Set.new
     end
 
     # Allow callbacks to be provided during the creation,
@@ -77,16 +78,20 @@ class BambooSocket
           loop do
             logger.debug 'Waiting for new guests.'
             guest = @waiting_list.shift
-            Fiber.schedule { new_guest(guest) }
+            new_guest(guest)
           end
         end
       end
     end
 
     def new_guest(guest)
+      @guest_list << guest
       guest.id = @current_id # Give each guest a unique id
       @current_id += 1
-      guest.listen
+      Fiber.schedule do
+        guest.listen
+        @guest_list.delete guest
+      end
     end
 
     # Exit all threads when receiving SIGINT

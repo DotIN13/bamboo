@@ -25,7 +25,8 @@ class BambooSocket
       init_buffer
     end
 
-    # Queue the message that is sent to this guest
+    # Send message to guest
+    # Always queue messages before sending
     def send_message(payload = '', type: :text)
       frame_queue << outgoing_frames(payload, type)
       Fiber.schedule { unload_queue unless @unloading }
@@ -35,7 +36,7 @@ class BambooSocket
     def listen
       loop do
         logger.debug 'Listening for new frames.'
-        ready = socket.wait 5
+        ready = socket.wait @opts[:max_timeout]
         raise SocketTimeout, "No incomming messages in #{@opts[:max_timeout]} seconds, socket dead" unless ready
 
         incomming = BambooFrame::Incomming.new(socket).receive
@@ -44,7 +45,7 @@ class BambooSocket
         # that the internet bandwidth is fully used when receiving lengthy messages
         handle incomming
       end
-    rescue SocketClosed
+    rescue SocketClosed, SocketTimeout, FrameError
       @callbacks[:remove]&.call(self)
       socket.close
     end
@@ -67,7 +68,7 @@ class BambooSocket
 
     def signal_close
       logger.warn { 'Closing socket with a close frame' }
-      PandaFrame::Outgoing.new(opcode: 0x08).send_frame(socket)
+      BambooFrame::Outgoing.new(opcode: 0x08).send_frame(socket)
     rescue Errno::EPIPE
       logger.warn { 'Broken pipe, no close frames sent' }
     rescue IOError
@@ -89,6 +90,8 @@ class BambooSocket
         break unless fin # If the frames does not finish, break and wait for another frame being inserted
       end
       @unloading = false
+    rescue Errno::EPIPE
+      signal_close
     end
 
     #################### Buffer ######################

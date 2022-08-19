@@ -10,3 +10,7 @@ group :development do
 end
 
 gem 'xorcist', '~> 1.1'
+
+gem "eventmachine", "~> 1.2", :group => :development
+
+gem "faye-websocket", "~> 0.11.1", :group => :development

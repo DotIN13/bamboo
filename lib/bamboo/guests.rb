@@ -12,7 +12,7 @@ class BambooSocket
   # and should be able to read from and write to the socket.
   class Guest
     include BambooSocket::Logging
-    attr_accessor :socket, :frame_queue, :id
+    attr_accessor :socket, :frame_queue, :id, :tags
 
     # Initialize message queue and perform a handshake
     def initialize(socket, callbacks, opts)
@@ -22,6 +22,7 @@ class BambooSocket
       @opts = opts
       @unloading = false
       @callbacks[:add]&.call(self)
+      @tags = {}
       init_buffer
     end
 
